@@ -1,6 +1,6 @@
 # CivicShield
 
-An anonymous grievance reporting and case-management platform. Citizens submit reports and track their status without revealing their identity; staff triage, assign, investigate, and resolve cases through role-based dashboards. Sensitive content is end-to-end encrypted at rest, and all case actions are recorded in a tamper-evident audit log.
+An anonymous grievance reporting and case-management platform, built for a college setting. Students submit reports and track their status without revealing their identity; staff (admins, investigators) triage, assign, investigate, and resolve cases through role-based dashboards. Sensitive content is end-to-end encrypted at rest, and all case actions are recorded in a tamper-evident audit log.
 
 ## Tech stack
 
@@ -66,7 +66,15 @@ The first install may ask you to approve build scripts — run `pnpm approve-bui
 
 ### 3. Configure environment variables
 
-Create a `.env` file in the project root (this is gitignored — never commit it):
+Create a `.env` file in the project root (this is gitignored — never commit it). You have two options:
+
+**Option A — Use the shared project database (recommended if you're on this team)**
+
+Reach out to a maintainer for the current `.env` file — it's shared privately, not posted anywhere public. Drop the contents into a `.env` file at the project root exactly as given, without editing or reformatting anything, and skip to [step 4](#4-set-up-the-database).
+
+**Option B — Set up your own database**
+
+If you're working independently or want an isolated environment:
 
 ```env
 DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
@@ -80,16 +88,28 @@ GRIEVANCE_MASTER_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----
 -----END PRIVATE KEY-----"
 ```
 
-- `DATABASE_URL`: your Postgres connection string.
-- The two `GRIEVANCE_MASTER_*` keys: generate your own pair, don't reuse anyone else's:
+- `DATABASE_URL`: point this at your own Postgres instance — e.g. a free project on [Neon](https://neon.tech), or a local/Docker Postgres.
+- Generate your own encryption keypair:
   ```bash
   pnpm generate:keys
   ```
   This prints both keys pre-formatted for a single-line `.env` (with escaped `\n`). Paste each one in directly, keeping the quotes.
 
-  ⚠️ **Each teammate/environment should generate their own keypair.** Never share a private key over Slack, chat, or commit it anywhere. Content encrypted with one keypair cannot be decrypted with another, so everyone on the same shared dev database must use the same key.
+  Note: the database and the two `GRIEVANCE_MASTER_*` keys are linked — content encrypted with one keypair can only be decrypted with that same keypair. If you're pointing at a database that already has data in it, you'll need the keypair that was used to encrypt that data, not a freshly generated one.
+
+⚠️ Either way, never commit `.env` or paste its contents anywhere public (GitHub, public Discord/Slack, issues, PRs). Treat it like a password.
 
 ### 4. Set up the database
+
+If you're on the shared project database (Option A above), it's already migrated and seeded — you only need to generate the Prisma client locally:
+
+```bash
+pnpm prisma generate
+```
+
+Skip straight to [step 5](#5-run-the-dev-server).
+
+If you're on your own database (Option B above), run the full setup:
 
 ```bash
 pnpm prisma generate
@@ -123,7 +143,7 @@ Visit **http://localhost:3000**.
 
 - `/submit` — submit a test grievance
 - `/track` — track it using the reference code + token printed on submission
-- `/staff/login` — log in with any seeded account above
+- `/staff/login` — log in with any seeded account above (or your own, once created)
 
 ## Running tests
 
@@ -136,9 +156,9 @@ Vitest is configured to stub out the `server-only` guard automatically (see `vit
 ## Working as a team
 
 - **Branching:** create a feature branch off `main` for any change (`git checkout -b feature/short-description`), open a pull request when ready, don't push directly to `main`.
-- **Environment variables are per-person.** Everyone needs their own `.env`, pointed at either a shared dev database or their own. If you're sharing one Neon database as a team, make sure everyone uses the **same** encryption keypair — otherwise nobody can decrypt data someone else encrypted. Share that keypair through a secrets manager or a private, secure channel — never through git or plain chat.
+- **If you're using the shared project database**, a maintainer's `.env` is the source of truth — don't run `pnpm prisma migrate dev` or `pnpm db:seed` casually, since that applies changes to the database everyone else is using. Coordinate schema changes first.
 - **Never commit `.env`.** It's already gitignored; double check `git status` before your first commit on a new machine.
-- **Database schema changes:** if you edit `prisma/schema.prisma`, run `pnpm prisma migrate dev` to generate a migration, and commit the generated migration folder under `prisma/migrations/` so teammates can apply the same change with `pnpm prisma migrate dev` on their own machines.
+- **Database schema changes:** if you need to edit `prisma/schema.prisma`, run `pnpm prisma migrate dev` to generate and apply the migration, then commit the generated migration folder under `prisma/migrations/` so everyone else can pull and apply the same change.
 - **Before opening a PR:** run `pnpm test` and `pnpm build` locally to catch issues early.
 
 ## Security notes
