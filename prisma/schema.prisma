@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  INVESTIGATOR
+  SUPER_ADMIN
+}
+
+enum ComplaintStatus {
+  RECEIVED
+  TRIAGED
+  ASSIGNED
+  INVESTIGATING
+  AWAITING_INFORMATION
+  RESOLVED
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum SenderType {
+  COMPLAINANT
+  INVESTIGATOR
+  SYSTEM
+}
+
+enum AuditAction {
+  SUBMITTED
+  ASSIGNED
+  PRIORITY_CHANGED
+  STATUS_CHANGED
+  PUBLIC_UPDATE_SENT
+  INTERNAL_NOTE_ADDED
+  MESSAGE_SENT
+  EVIDENCE_ADDED
+  AUDIT_VERIFIED
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  displayName    String
+  role           Role
+  active         Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  lastLoginAt    DateTime?
+  assignments    Complaint[] @relation("AssignedComplaints")
+  notes          InternalNote[]
+  sessions       Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  revokedAt DateTime?
+  lastUsedAt DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model Complaint {
+  id                 String          @id @default(cuid())
+  referenceCode      String          @unique
+  trackingTokenHash  String          @unique
+  anonymous          Boolean         @default(true)
+  category           String
+  generalLocation    String?
+  safetyFlag         Boolean         @default(false)
+  status             ComplaintStatus @default(RECEIVED)
+  priority           Priority        @default(NORMAL)
+  assignedToId       String?
+  submittedAt        DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  assignedTo         User?           @relation("AssignedComplaints", fields: [assignedToId], references: [id])
+  encryptedPayload   EncryptedPayload?
+  events             PublicTimelineEvent[]
+  notes              InternalNote[]
+  messages           EncryptedMessage[]
+  evidence           Evidence[]
+  audits             AuditEvent[]
+  @@index([status, priority])
+  @@index([assignedToId, status])
+}
+
+model EncryptedPayload {
+  id             String @id @default(cuid())
+  complaintId    String @unique
+  ciphertext     String
+  iv             String
+  authTag        String
+  wrappedKey     String
+  keyVersion     Int    @default(1)
+  complaint      Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+}
+
+model PublicTimelineEvent {
+  id          String   @id @default(cuid())
+  complaintId String
+  title       String
+  publicUpdate String
+  createdAt   DateTime @default(now())
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  @@index([complaintId, createdAt])
+}
+
+model InternalNote {
+  id          String   @id @default(cuid())
+  complaintId String
+  authorId    String
+  ciphertext  String
+  iv          String
+  authTag     String
+  wrappedKey  String
+  createdAt   DateTime @default(now())
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  author      User      @relation(fields: [authorId], references: [id])
+  @@index([complaintId, createdAt])
+}
+
+model EncryptedMessage {
+  id          String     @id @default(cuid())
+  complaintId String
+  senderType  SenderType
+  ciphertext  String
+  iv          String
+  authTag     String
+  wrappedKey  String
+  createdAt   DateTime   @default(now())
+  complaint   Complaint  @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  @@index([complaintId, createdAt])
+}
+
+model Evidence {
+  id          String   @id @default(cuid())
+  complaintId String
+  objectKey   String   @unique
+  fileName    String
+  mimeType    String
+  byteSize    Int
+  sha256      String
+  createdAt   DateTime @default(now())
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  @@index([complaintId])
+}
+
+model AuditEvent {
+  id          String      @id @default(cuid())
+  complaintId String?
+  actorId     String?
+  action      AuditAction
+  metadata    Json
+  previousHash String?
+  eventHash   String      @unique
+  createdAt   DateTime    @default(now())
+  complaint   Complaint?  @relation(fields: [complaintId], references: [id], onDelete: SetNull)
+  @@index([createdAt])
+}
